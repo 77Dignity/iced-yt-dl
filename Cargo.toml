@@ -8,4 +8,4 @@ iced = "0.12.1"
 tokio = { version = "1.0", features = ["full"] }
 youtube_dl = "0.10.0"
 futures = "0.3"
-nfd2 = "0.1"
+nfd2 = "0.3.1"
