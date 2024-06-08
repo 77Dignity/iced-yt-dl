@@ -1,56 +1,38 @@
+use iced::advanced::graphics::text::Paragraph;
 use iced::{
-    widget::button, executor, alignment::Alignment, Application, widget::Button, widget::Column, Command, Element,
-    widget::ProgressBar, Settings, Subscription, widget::Text, widget::TextInput, widget::text_input,
+    executor, Application, widget::Button, widget::Column, Command, widget::Container, Element, Length, Settings, Subscription, widget::Text, widget::TextInput,
 };
-use std::sync::{Arc, Mutex};
-use tokio::task;
-use youtube_dl::YoutubeDl;
-use nfd2::Response;
+use iced::widget::{button, text_input};
+use iced::alignment::Horizontal;
+use tokio::process::Command as TokioCommand;
 
 #[derive(Default)]
-struct YouTubeDLGui {
+struct YouTubeDownloader {
     url: String,
-    directory: String,
-    progress: f32,
-    url_input: text_input::State,
-    dir_button: button::State,
+    url_input: text_input::State<Paragraph>,
     download_button: button::State,
-    state: Arc<Mutex<AppState>>,
-}
-
-#[derive(Default)]
-struct AppState {
-    url: String,
-    directory: String,
-    progress: f32,
+    message: String,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     UrlChanged(String),
-    DirectoryChosen(Option<String>),
     Download,
-    ProgressUpdated(f32),
+    DownloadComplete(Result<String, String>),
 }
 
-impl Application for YouTubeDLGui {
-    type Theme = iced::theme::Theme;
+impl Application for YouTubeDownloader {
     type Executor = executor::Default;
     type Message = Message;
+    type Theme = iced::Theme;
     type Flags = ();
 
-    fn new(_flags: ()) -> (Self, Command<Self::Message>) {
-        (
-            YouTubeDLGui {
-                state: Arc::new(Mutex::new(AppState::default())),
-                ..Self::default()
-            },
-            Command::none(),
-        )
+    fn new(_flags: ()) -> (YouTubeDownloader, Command<Message>) {
+        (YouTubeDownloader::default(), Command::none())
     }
 
     fn title(&self) -> String {
-        String::from("YouTube DL GUI")
+        String::from("YouTube Downloader")
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -59,88 +41,67 @@ impl Application for YouTubeDLGui {
                 self.url = url;
                 Command::none()
             }
-            Message::DirectoryChosen(directory) => {
-                if let Some(dir) = directory {
-                    self.directory = dir;
-                }
-                Command::none()
-            }
             Message::Download => {
-                let state = self.state.clone();
                 let url = self.url.clone();
-                let directory = self.directory.clone();
-
-                task::spawn(async move {
-                    if !url.is_empty() && !directory.is_empty() {
-                        let output_template = format!("{}/%(title)s.%(ext)s", directory);
-                        let _ = YoutubeDl::new(&url)
-                            .output_template(&output_template)
-                            .download_to(directory)
-                            .unwrap();
-
-                        for i in 0..=100 {
-                            state.lock().unwrap().progress = i as f32 / 100.0;
-                            futures::future::pending::<()>().await;
-                        }
-                    }
-                });
-
-                Command::none()
+                Command::perform(download_video(url), Message::DownloadComplete)
             }
-            Message::ProgressUpdated(progress) => {
-                self.progress = progress;
+            Message::DownloadComplete(result) => {
+                self.message = match result {
+                    Ok(msg) => msg,
+                    Err(err) => err,
+                };
                 Command::none()
             }
         }
     }
 
-    fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(std::time::Duration::from_millis(100)).map(|_| {
-            let progress = self.state.lock().unwrap().progress;
-            Message::ProgressUpdated(progress)
-        })
-    }
-
-    fn view(&mut self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let url_input = TextInput::new(
-            &mut self.url_input,
-            "Enter YouTube URL",
-            &self.url,
-            Message::UrlChanged,
-        )
-        .padding(10)
-        .size(20);
+            "Enter YouTube URL...",
+            "",
+            )
+        .padding(10);
 
-        let dir_button = Button::new(&mut self.dir_button, Text::new("Choose Download Directory"))
+        let download_button = Button::new("Download")
             .padding(10)
-            .on_press(Message::DirectoryChosen(choose_directory()));
-
-        let download_button = Button::new(&mut self.download_button, Text::new("Download"))
-            .padding(10)
-            .on_press(Message::Download);
-
-        let progress_bar = ProgressBar::new(0.0..=1.0, self.progress);
+            .on_press(Message::Download); 
 
         let content = Column::new()
-            .padding(20)
-            .align_items(Alignment::Center)
+            .align_items(iced::Alignment::Center)
+            .spacing(20)
             .push(url_input)
-            .push(dir_button)
-            .push(progress_bar)
-            .push(download_button);
+            .push(download_button)
+            .push(Text::new(&self.message).horizontal_alignment(Horizontal::Center));
 
-        content.into()
+        Container::new(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
     }
 }
 
-fn choose_directory() -> Option<String> {
-    let result = nfd2::open_pick_folder(None).unwrap();
-    match result {
-        Response::Okay(path) => Some(path),
-        _ => None,
+async fn download_video(url: String) -> Result<String, String> {
+    match TokioCommand::new("youtube-dl")
+        .arg(url)
+        .output()
+        .await
+    {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from("Download complete!"))
+            } else {
+                Err(format!(
+                    "Failed to download video: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute youtube-dl: {}", e)),
     }
 }
 
-fn main() {
-    YouTubeDLGui::run(Settings::default());
+fn main() -> iced::Result {
+    YouTubeDownloader::run(Settings::default())
 }

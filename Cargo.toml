@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = "0.12.1"
-tokio = { version = "1.0", features = ["full"] }
+iced = { version = "0.12.1", features = ["advanced"] }
+tokio = { version = "1.38.0", features = ["full"] }
 youtube_dl = "0.10.0"
 futures = "0.3"
 nfd2 = "0.3.1"
+async-std = "1.10.0"
