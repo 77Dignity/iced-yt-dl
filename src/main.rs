@@ -35,6 +35,9 @@ impl Application for YouTubeDownloader {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
+    fn theme(&self) -> Self::Theme {
+        iced::Theme::Dark
+    }
     type Flags = ();
 
     fn new(_flags: ()) -> (YouTubeDownloader, Command<Message>) {
@@ -168,5 +171,13 @@ async fn download_video(url: String) -> Result<String, String> {
 
 fn main() -> iced::Result {
 
-    YouTubeDownloader::run(Settings::default())
+    YouTubeDownloader::run(Settings {
+        window: iced::window::Settings {
+            size: iced::Size::new(400f32, 200f32), // Set the initial window size
+            resizable: true,
+            decorations: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    })
 }
